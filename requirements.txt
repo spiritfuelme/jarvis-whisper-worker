@@ -1,0 +1,5 @@
+runpod>=1.7.0
+faster-whisper>=1.0.3
+firebase-admin>=6.5.0
+google-cloud-storage>=2.16.0
+requests>=2.32.0
