@@ -1,15 +1,18 @@
 # RunPod Serverless worker: faster-whisper on GPU with Firebase Admin.
 #
-# Base: CUDA 12.9 + PyTorch 2.9.1 — needed for Blackwell GPUs (sm_120, e.g.
-# RTX PRO 6000 Blackwell on RunPod's "24 GB PRO" tier). PyTorch 2.4 / CUDA 12.4
-# only ships kernels for sm_50..sm_90 and fails RunPod's CUDA fitness check on
-# Blackwell hardware ("no kernel image is available for execution on the device").
+# GPU/CUDA compatibility matrix:
+#  - Image CUDA 12.4 (this file): works on Ada Lovelace (RTX 4090 sm_89),
+#    Ampere (A6000/A100 sm_86/sm_80), Turing/Volta. The most-supported
+#    sweet spot for RunPod RTX 4090 / 48 GB / 80 GB tiers.
+#  - Image CUDA 12.9+: needed for Blackwell GPUs (RTX PRO 6000 sm_120, "PRO" tiers),
+#    but the host NVIDIA driver on most current RunPod nodes is too old and
+#    refuses to start a >=12.9 container (`nvidia-container-cli: requirement error`).
 #
-# Note: faster-whisper uses CTranslate2, not PyTorch, for the actual inference.
-# PyTorch needs to be present + functional only because RunPod's worker startup
-# fitness check imports it and verifies torch.cuda is healthy before serving.
+# If you ever switch the endpoint to a "PRO" / Blackwell GPU, bump this to
+# runpod/pytorch:1.0.3-cu1281-torch291-ubuntu2204 (CUDA 12.8 — supports sm_120
+# AND broadly available host drivers).
 
-FROM runpod/pytorch:1.0.3-cu1290-torch291-ubuntu2204
+FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -18,7 +21,7 @@ ENV PYTHONUNBUFFERED=1 \
     WHISPER_COMPUTE_TYPE=float16 \
     WHISPER_DEVICE=cuda
 
-# Fall back to writable /tmp paths when no network volume is attached.
+# Fall back to /tmp paths when no network volume is attached.
 RUN mkdir -p /runpod-volume/hf-cache /runpod-volume/.cache || \
     (mkdir -p /tmp/hf-cache /tmp/.cache && \
      echo "HF_HOME=/tmp/hf-cache" >> /etc/environment && \
@@ -35,7 +38,6 @@ RUN pip install --upgrade pip && pip install -r requirements.txt
 
 COPY handler.py .
 
-# Model downloads on first invocation (adds ~30-60s to the very first cold start,
-# then cached on the network volume / image layer for subsequent invocations).
+# Model downloads on first invocation (adds ~30-60s to the very first cold start).
 
 CMD ["python", "-u", "handler.py"]
